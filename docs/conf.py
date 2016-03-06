@@ -275,3 +275,6 @@ texinfo_documents = [
 #texinfo_no_detailmenu = False
 
 autoclass_content = "both"
+
+autodoc_mock_imports = ('smartcard', 'smartcard.pcsc', 'smartcard.pcsc.PCSCCardConnection', 'smartcard.scard', 'smartcard.Exceptions')
+

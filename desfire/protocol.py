@@ -54,6 +54,7 @@ ERRORS = {
 class DESFireCommunicationError(Exception):
     """Outgoing DESFire command received a non-OK reply.
 
+    The exception message is human readable translation of the error code if available. The ``status_code`` carries the original status word error byte.
     """
 
     def __init__(self, msg, status_code):
@@ -88,7 +89,7 @@ class DESFire(object):
 
         :param apdu_cmd: Outgoing APDU command as array of bytes
         :param description: Command description for logging purposes
-        :raise: :py:class:`desfire.DESFireCommunicationError` on any error
+        :raise: :py:class:`desfire.protocol.DESFireCommunicationError` on any error
 
         :return: APDU response as array of bytes
         """
@@ -147,7 +148,7 @@ class DESFire(object):
         TODO: Check byte order here
 
         :return: List of 24-bit intesx
-        :raise: :py:class:`desfire.DESFireCommunicationError` on any error
+        :raise: :py:class:`desfire.protocol.DESFireCommunicationError` on any error
         """
 
         # https://ridrix.wordpress.com/2009/09/19/mifare-desfire-communication-example/
@@ -177,7 +178,7 @@ class DESFire(object):
         TODO: Check byte order here
 
         :param app_id: 24-bit int
-        :raise: :py:class:`desfire.DESFireCommunicationError` on any error
+        :raise: :py:class:`desfire.protocol.DESFireCommunicationError` on any error
         """
         # https://github.com/greenbird/workshops/blob/master/mobile/Android/Near%20Field%20Communications/HelloWorldNFC%20Desfire%20Base/src/com/desfire/nfc/DesfireReader.java#L53
         parameters = [
@@ -303,14 +304,9 @@ class DESFire(object):
     def get_value(self, file_id):
         """Get stored value.
 
-        Parameters
-        ----------
-        file_id
-
-        Returns
-        -------
-
-        Integer.
+        :param file_id: Stored value file id
+        :return: Integer.
+        :raise: :py:class:`desfire.protocol.DESFireCommunicationError` on any error
         """
         apdu_command = self.wrap_command(0x6c, [file_id])
         resp = self.communicate(apdu_command, "Reading value {:02X}".format(file_id))
@@ -323,6 +319,8 @@ class DESFire(object):
         :param file_id: (byte)
 
         :param added_value: (int, 32 bit) Value to be added to the current value
+
+        :raise: :py:class:`desfire.protocol.DESFireCommunicationError` on any error
         """
 
         value = dword_to_byte_array(added_value)
@@ -338,7 +336,6 @@ class DESFire(object):
         :param value_decrease:  (int, 32 bit) How much we reduce from existing value
 
         Example
-        -------
 
         ::
 
@@ -420,7 +417,6 @@ class DESFire(object):
         """Commit all write changes to the card.
 
         Example
-        -------
 
         ::
 
@@ -472,7 +468,6 @@ class DESFire(object):
         :param limited_credit_enabled: (byte) Allows limited increase in value file without having full credit permission.
 
         Example
-        -------
 
         ::
 
