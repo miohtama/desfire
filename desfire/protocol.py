@@ -17,6 +17,7 @@ from __future__ import print_function
 
 import logging
 
+from desfire.device import Device
 from desfire.util import byte_array_to_human_readable_hex, dword_to_byte_array
 
 _logger = logging.getLogger(__name__)
@@ -68,6 +69,9 @@ class DESFire(object):
         :param device: :py:class:`desfire.device.Device` implementation
         :param logger: Python :py:class:`logging.Logger` used for logging output. Overrides the default logger. Extensively uses ``INFO`` logging level.
         """
+
+        assert isinstance(device, Device), "Not a compatible device instance: {}".format(device)
+
         self.device = device
 
         if logger:
@@ -89,10 +93,10 @@ class DESFire(object):
         :return: APDU response as array of bytes
         """
         apdu_cmd_hex = [hex(c) for c in apdu_cmd]
-        self.logger.info("Running APDU command %s, sending: %s", description, apdu_cmd_hex)
+        self.logger.debug("Running APDU command %s, sending: %s", description, apdu_cmd_hex)
 
         resp = self.device.transceive(apdu_cmd)
-        self.logger.info("Received APDU response: %s", byte_array_to_human_readable_hex(resp))
+        self.logger.debug("Received APDU response: %s", byte_array_to_human_readable_hex(resp))
 
         if resp[-2] != 0x91:
             raise DESFireCommunicationError("Received invalid response for command: {}".format(description), resp[-2:])
@@ -116,8 +120,6 @@ class DESFire(object):
         # bug getting this corrupted down along the line
         unframed = list(resp[0:-2])
 
-        self.logger.info("Unframed response: %s", byte_array_to_human_readable_hex(unframed))
-
         return unframed
 
     def parse_application_list(self, resp):
@@ -133,7 +135,7 @@ class DESFire(object):
         apps = []
         while pointer < len(resp):
             app_id = (resp[pointer] << 16) + (resp[pointer+1] << 8) + resp[pointer+2]
-            self.logger.info("Reading %d %08x", pointer, app_id)
+            self.logger.debug("Reading %d %08x", pointer, app_id)
             apps.append(app_id)
             pointer += 3
 
@@ -242,7 +244,7 @@ class DESFire(object):
         #
         # cipher.init(Cipher.DECRYPT_MODE, secret_key)
         # random_b_decrypted = list(cipher.doFinal(random_b_encrypted))
-        # self.logger.info("Decrypted random B %s", byte_array_to_human_readable_hex(random_b_decrypted))
+        # self.logger.debug("Decrypted random B %s", byte_array_to_human_readable_hex(random_b_decrypted))
         #
         # # Let's pick up by fire dice
         # # This let's us skip one XOR'ing
@@ -254,7 +256,7 @@ class DESFire(object):
         # rotated_b = random_b_decrypted[1:] + random_b_decrypted[0:1]
         # cipher_text = list(cipher.update(random_a)) + list(cipher.doFinal(rotated_b))
         #
-        # self.logger.info("Sending in cipher text %s", byte_array_to_human_readable_hex(cipher_text))
+        # self.logger.debug("Sending in cipher text %s", byte_array_to_human_readable_hex(cipher_text))
         # assert len(cipher_text) == 16
         #
         # apdu_command = self.wrap_command(0xaf, cipher_text)
@@ -344,27 +346,27 @@ class DESFire(object):
                 '''Continuously keep decreasing credits on the card.'''
 
                 def on_enter(self):
-                    Logger.info("Entering burner screen")
+                    Logger.debug("Entering burner screen")
                     nfc_controller.callback = self.detect_new_tag
                     self.timer = None
                     self.device = None
 
                 def detect_new_tag(self, tag):
 
-                    Logger.info("Detected tag %s", tag)
+                    Logger.debug("Detected tag %s", tag)
                     self.tag = tag
                     self.device = deviceDep.get(tag)
                     self.device.connect()
                     self.start_burner_cycle()
 
                 def start_burner_cycle(self):
-                    Logger.info("Starting next burner cycle")
+                    Logger.debug("Starting next burner cycle")
                     self.timer = Timer(0.3, self.burn)
                     self.timer.start()
 
                 def burn(self):
 
-                    Logger.info("Running burner cycle")
+                    Logger.debug("Running burner cycle")
 
                     try:
                         if not self.device.isConnected():
