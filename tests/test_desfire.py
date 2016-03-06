@@ -1,30 +1,34 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
+import logging
 
-"""
-test_desfire
-----------------------------------
+import pytest
 
-Tests for `desfire` module.
-"""
+from desfire.dummy import DummyDevice
+from desfire.protocol import DESFire
+from desfire.protocol import DESFireCommunicationError
 
-import unittest
-
-from desfire import desfire
+@pytest.fixture
+def device():
+    return DummyDevice()
 
 
-class TestDesfire(unittest.TestCase):
-
-    def setUp(self):
-        pass
-
-    def tearDown(self):
-        pass
-
-    def test_000_something(self):
-        pass
+@pytest.fixture
+def desfire(device):
+    logger = logging.getLogger("test")
+    logger.setLevel(logging.ERROR)
+    return DESFire(device, logger)
 
 
-if __name__ == '__main__':
-    import sys
-    sys.exit(unittest.main())
+
+def test_invalid_response(desfire, device):
+    """We raise error on invalid response."""
+    device.test_reply = [0x00, 0x00]
+    with pytest.raises(DESFireCommunicationError):
+        list_applications = desfire.get_applications()
+
+
+def test_select_application(desfire, device):
+    """Application listing gives correct result for one application."""
+    device.test_reply = [0x01, 0x02, 0x03, 0x91, 0x00]
+    list_applications = desfire.get_applications()
+    assert len(list_applications) == 1
+    assert list_applications[0] == 0x010203

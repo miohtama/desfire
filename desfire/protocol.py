@@ -1,21 +1,48 @@
 """Mifare DESFire communication protocol for Python.
 
-Copyright 2016 Mikko Ohtamaa, https://opensourcehacker.com
-
-Licensed under BSD license: https://opensource.org/licenses/BSD-3-Clause
-
 """
 from __future__ import print_function
 
+import logging
+
+
+_logger = logging.getLogger(__name__)
+
+
+#: File kind bits set on a DESFire file
+FILE_TYPES = {
+    0x00: "Standard Data Files",
+    0x01: "Backup Data Files",
+    0x02: "Value Files with Backup",
+    0x03: "Linear Record Files with Backup",
+    0x04: "Cyclic Record Files with Backup",
+}
+
+#: Communication requirements bits set a on DESFire file
+FILE_COMMUNICATION = {
+    0x00: "Plain communication",
+    0x01: "Plain communication secured by DES/3DES MACing",
+    0x03: "Fully DES/3DES enciphered communication",
+}
+
+#: Error code translation mappings
+#: https://github.com/jekkos/android-hce-desfire/blob/master/hceappletdesfire/src/main/java/net/jpeelaer/hce/desfire/DesfireStatusWord.java
+ERRORS = {
+    0x9d: "Permission denied",
+    0x1c: "Limited credit",
+    0xae: "Authentication error",
+    0x7e: "Length error when sending the command",
+    0x0c: "No changes",
+    0xf0: "File not found"
+}
 
 def byte_array_to_byte_string(bytes):
     s = "".join([chr(b) for b in bytes])
     return s
 
 
-def byte_array_to_hex(bytes):
-    s = byte_array_to_byte_string(bytes)
-    return s.encode("hex")
+def byte_array_to_human_readable_hex(bytes):
+    return " ".join(["{:02X}".format(ord(c)) for c in byte_array_to_byte_string(bytes)])
 
 
 def byte_string_to_byte_array(s):
@@ -31,19 +58,13 @@ def dword_to_byte_array(value):
 
 
 class DESFireCommunicationError(Exception):
-    """Command could not be completed.
+    """Outgoing DESFire command received a non-OK reply.
 
-    https://github.com/jekkos/android-hce-desfire/blob/master/hceappletdesfire/src/main/java/net/jpeelaer/hce/desfire/DesfireStatusWord.java
     """
 
-    ERRORS = {
-        0x9d: "Permission denied",
-        0x1c: "Limited credit",
-        0xae: "Authentication error",
-        0x7e: "Length error when sending the command",
-        0x0c: "No changes",
-        0xf0: "File not found"
-    }
+    def __init__(self, msg, status_code):
+        super(DESFireCommunicationError, self).__init__(msg)
+        self.status_code = status_code
 
 
 class DESFire(object):
@@ -62,78 +83,60 @@ class DESFire(object):
     * https://github.com/jekkos/android-hce-desfire/blob/master/hceappletdesfire/src/main/java/net/jpeelaer/hce/desfire/DesfireStatusWord.java
     """
 
-    FILE_TYPES = {
-        0x00: "Standard Data Files",
-        0x01: "Backup Data Files",
-        0x02: "Value Files with Backup",
-        0x03: "Linear Record Files with Backup",
-        0x04: "Cyclic Record Files with Backup",
-    }
-
-    FILE_COMMUNICATION = {
-        0x00: "Plain communication",
-        0x01: "Plain communication secured by DES/3DES MACing",
-        0x03: "Fully DES/3DES enciphered communication",
-    }
-
-    def __init__(self, iso, logger):
+    def __init__(self, device, logger=None):
         """
-
-        Parameters
-        ----------
-        iso Android android.nfc.tech.IsoDep interface
-        logger Communications logging
-
-        Returns
-        -------
-
+        :param device: :py:class:`desfire.device.Device` implementation
+        :param logger: Python :py:class:`logging.Logger` used for logging output. Overrides the default logger. Extensively uses ``INFO`` logging level.
         """
-        self.iso = iso
-        self.logger = logger
+        self.device = device
+
+        if logger:
+            self.logger = logger
+        else:
+            self.logger = _logger
 
     def communicate(self, apdu_cmd, description):
-        """Communicate with NFC tag.
+        """Communicate with a NFC tag.
 
-        Parameters
-        ----------
-        apdu_cmd APDU command as array of bytes
-        description Information for logging purposes
+        Send in outgoing request and waith for a card reply.
 
-        Returns
-        -------
+        TODO: Handle additional framing via 0xaf
 
-        APDU response as array of bytes
+        :param apdu_cmd: Outgoing APDU command as array of bytes
+        :param description: Command description for logging purposes
+        :raise: :py:class:`desfire.DESFireCommunicationError` on any error
 
+        :return: APDU response as array of bytes
         """
         apdu_cmd_hex = [hex(c) for c in apdu_cmd]
         self.logger.info("Running APDU command %s, sending: %s", description, apdu_cmd_hex)
 
-        resp = self.iso.transceive(apdu_cmd)
-        self.logger.info("Received APDU response: %s", byte_array_to_hex(resp))
+        resp = self.device.transceive(apdu_cmd)
+        self.logger.info("Received APDU response: %s", byte_array_to_human_readable_hex(resp))
 
         if resp[-2] != 0x91:
-            raise DESFireCommunicationError("Received invalid response for: {}".format(description))
+            raise DESFireCommunicationError("Received invalid response for command: {}".format(description), resp[-2:])
 
         status = resp[-1]
 
         # Possible status words: https://github.com/jekkos/android-hce-desfire/blob/master/hceappletdesfire/src/main/java/net/jpeelaer/hce/desfire/DesfireStatusWord.java
 
         # Check for known erors
-        error_msg = DESFireCommunicationError.ERRORS.get(status)
+        error_msg = ERRORS.get(status)
         if error_msg:
-            raise DESFireCommunicationError(error_msg)
+            raise DESFireCommunicationError(error_msg, status)
 
         if status == 0xaf:
             # TODO: Additional framing
             pass
         elif status != 0x00:
-            raise DESFireCommunicationError("Error {:02x} when communicating".format(status))
+            raise DESFireCommunicationError("Error {:02x} when communicating".format(status), status)
 
         # This will un-memoryview this object as there seems to be some pyjnius
         # bug getting this corrupted down along the line
         unframed = list(resp[0:-2])
 
-        self.logger.info("Unframed response: %s", byte_array_to_hex(unframed))
+        self.logger.info("Unframed response: %s", byte_array_to_human_readable_hex(unframed))
 
         return unframed
 
@@ -155,7 +158,7 @@ class DESFire(object):
         pointer = 0
         apps = []
         self.logger.info("Resp is %s", resp)
-        self.logger.info("Resp is %s", byte_array_to_hex(resp))
+        self.logger.info("Resp is %s", byte_array_to_human_readable_hex(resp))
         while pointer < len(resp):
             app_id = (resp[pointer] << 16) + (resp[pointer+1] << 8) + resp[pointer+2]
             self.logger.info("Reading %d %08x", pointer, app_id)
@@ -165,17 +168,23 @@ class DESFire(object):
         return apps
 
     def get_applications(self):
-        """Get all applications listed in Desfire root."""
+        """Get all applications listed in Desfire root.
+
+        TODO: Check byte order here
+
+        :return: List of 24-bit intesx
+        :raise: :py:class:`desfire.DESFireCommunicationError` on any error
+        """
 
         # https://ridrix.wordpress.com/2009/09/19/mifare-desfire-communication-example/
         cmd = self.wrap_command(0x6a)
         resp = self.communicate(cmd, "Read applications")
-        self.logger.info("Foobar %s", byte_array_to_hex(resp))
+        self.logger.info("Foobar %s", byte_array_to_human_readable_hex(resp))
         apps = self.parse_application_list(resp)
         return apps
 
     def wrap_command(self, command, parameters=None):
-        """Wrap command to native DES framing.
+        """Wrap a command to native DES framing.
 
         https://github.com/greenbird/workshops/blob/master/mobile/Android/Near%20Field%20Communications/HelloWorldNFC%20Desfire%20Base/src/com/desfire/nfc/DesfireReader.java#L129
         """
@@ -185,7 +194,13 @@ class DESFire(object):
             return [0x90, command, 0x00, 0x00, 0x00]
 
     def select_application(self, app_id):
+        """Choose application on a card on which all the following file commands will apply.
 
+        TODO: Check byte order here
+
+        :param app_id: 24-bit int
+        :raise: :py:class:`desfire.DESFireCommunicationError` on any error
+        """
         # https://github.com/greenbird/workshops/blob/master/mobile/Android/Near%20Field%20Communications/HelloWorldNFC%20Desfire%20Base/src/com/desfire/nfc/DesfireReader.java#L53
         parameters = [
             (app_id >> 16) & 0xff,
@@ -195,7 +210,7 @@ class DESFire(object):
 
         apdu_command = self.wrap_command(0x5a, parameters)
 
-        resp = self.communicate(apdu_command, "Selecting application {:06X}".format(app_id))
+        self.communicate(apdu_command, "Selecting application {:06X}".format(app_id))
 
     def get_file_ids(self):
         # https://github.com/jekkos/android-hce-desfire/blob/master/hceappletdesfire/src/main/java/net/jpeelaer/hce/desfire/DesfireApplet.java#L484
@@ -213,6 +228,8 @@ class DESFire(object):
 
         Here we use legacy authentication (0xa0)
         """
+
+        raise NotImplementedError("Still needs to be done in a proper manner.")
 
         from jnius import autoclass
         from jnius import cast
@@ -243,7 +260,7 @@ class DESFire(object):
 
         cipher.init(Cipher.DECRYPT_MODE, secret_key)
         random_b_decrypted = list(cipher.doFinal(random_b_encrypted))
-        self.logger.info("Decrypted random B %s", byte_array_to_hex(random_b_decrypted))
+        self.logger.info("Decrypted random B %s", byte_array_to_human_readable_hex(random_b_decrypted))
 
         # Let's pick up by fire dice
         # This let's us skip one XOR'ing
@@ -255,7 +272,7 @@ class DESFire(object):
         rotated_b = random_b_decrypted[1:] + random_b_decrypted[0:1]
         cipher_text = list(cipher.update(random_a)) + list(cipher.doFinal(rotated_b))
 
-        self.logger.info("Sending in cipher text %s", byte_array_to_hex(cipher_text))
+        self.logger.info("Sending in cipher text %s", byte_array_to_human_readable_hex(cipher_text))
         assert len(cipher_text) == 16
 
         apdu_command = self.wrap_command(0xaf, cipher_text)
@@ -360,14 +377,14 @@ class DESFire(object):
                     Logger.info("Entering burner screen")
                     nfc_controller.callback = self.detect_new_tag
                     self.timer = None
-                    self.iso = None
+                    self.device = None
 
                 def detect_new_tag(self, tag):
 
                     Logger.info("Detected tag %s", tag)
                     self.tag = tag
-                    self.iso = IsoDep.get(tag)
-                    self.iso.connect()
+                    self.device = deviceDep.get(tag)
+                    self.device.connect()
                     self.start_burner_cycle()
 
                 def start_burner_cycle(self):
@@ -380,11 +397,11 @@ class DESFire(object):
                     Logger.info("Running burner cycle")
 
                     try:
-                        if not self.iso.isConnected():
+                        if not self.device.isConnected():
                             # We have lost the tag
                             return
 
-                        desfire = DESFire(self.iso, Logger)
+                        desfire = DESFire(self.device, Logger)
                         desfire.select_application(WATTCOIN_APP_ID)
 
                         desfire.debit_value(WATTCOIN_FILE_STORED_VALUE, 1)
@@ -398,7 +415,7 @@ class DESFire(object):
                         self.start_burner_cycle()
 
                     except Exception as e:
-                        # Most likely exception from ISO tag communications, tag moved away during communications
+                        # Most likely exception from device tag communications, tag moved away during communications
                         tb = traceback.format_exc()
                         Logger.exception(str(e))
                         Logger.exception(tb)
@@ -412,8 +429,8 @@ class DESFire(object):
 
                 def close(self):
 
-                    if self.iso:
-                        self.iso.close()
+                    if self.device:
+                        self.device.close()
 
                     # jnius threads are not cancellable
                     # if self.timer:
@@ -436,10 +453,10 @@ class DESFire(object):
         ::
 
             def top_up(self, tag, added_value):
-                iso = IsoDep.get(tag)
-                iso.connect()
+                device = deviceDep.get(tag)
+                device.connect()
 
-                desfire = DESFire(iso, Logger)
+                desfire = DESFire(device, Logger)
 
                 try:
 
@@ -449,7 +466,7 @@ class DESFire(object):
                     desfire.commit()
                     return old_value
                 finally:
-                    iso.close()
+                    device.close()
 
 
         """
@@ -487,10 +504,10 @@ class DESFire(object):
         ::
 
             def write_card(self, tag, value):
-                iso = IsoDep.get(tag)
-                iso.connect()
+                device = deviceDep.get(tag)
+                device.connect()
 
-                desfire = DESFire(iso, Logger)
+                desfire = DESFire(device, Logger)
 
                 try:
                     desfire.select_application(WATTCOIN_APP_ID)
@@ -506,7 +523,7 @@ class DESFire(object):
 
                     return old_value
                 finally:
-                    iso.close()
+                    device.close()
         """
 
         parameters = [file_id]
