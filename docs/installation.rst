@@ -6,8 +6,8 @@ Installation
 
 Install with pip to your virtualenv.
 
-Linux
------
+Ubuntu Linux
+------------
 
 Install libraries using a `Python virtual environment <https://packaging.python.org/en/latest/installing/#optionally-create-a-virtual-environment>`_.
 
