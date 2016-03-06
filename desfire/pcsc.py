@@ -32,7 +32,5 @@ class PCSCDevice(Device):
         hresult, response = SCardTransmit(self.card_connection.hcard, pcscprotocolheader, bytes)
         print(hresult, response)
         if hresult != 0:
-            raise CardConnectionException('Failed to transmit with protocol ' + str(pcscprotocolheader)+ '. ' + SCardGetErrorMessage(hresult))
+            raise CardConnectionException('Failed to transmit with protocol ' + str(pcscprotocolheader) + '. ' + SCardGetErrorMessage(hresult))
         return response
-
-

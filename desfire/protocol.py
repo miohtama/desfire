@@ -213,52 +213,52 @@ class DESFire(object):
 
         raise NotImplementedError("Still needs to be done in a proper manner.")
 
-        from jnius import autoclass
-        from jnius import cast
-
-        Cipher = autoclass("javax.crypto.Cipher")
-        SecretKeySpec = autoclass("javax.crypto.spec.SecretKeySpec")
-        SecretKeyFactory = autoclass("javax.crypto.SecretKeyFactory")
-        IvParameterSpec = autoclass("javax.crypto.spec.IvParameterSpec")
-        DESKeySpec = autoclass("javax.crypto.spec.DESKeySpec")
-        DESedeKeySpec = autoclass("javax.crypto.spec.DESedeKeySpec")
-        String = autoclass("java.lang.String")
-
-        apdu_command = self.wrap_command(0x0a, [key_id])
-        resp = self.communicate(apdu_command, "Authenticating application {:06X}".format(app_id))
-
-        # http://java-card-desfire-emulation.googlecode.com/svn/trunk/java-card-desfire-emulation/Credit%20DESfire%20App/src/credit/DESfireApi.java
-        # http://mrbigzz.blogspot.com/2014/01/android-desfire-authentication.html
-        random_b_encrypted = list(resp)
-        assert len(random_b_encrypted) == 8
-
-        #bytes = String("xxxxXXXXxxxxXXXX").getBytes()
-        #des_key_spec = DESedeKeySpec(bytes)
-
-        cipher = Cipher.getInstance("DESede/ECB/NoPadding","BC")
-
-        secret_key_spec = SecretKeySpec(private_key, "DESede")
-        secret_key = cast("java.security.Key", secret_key_spec)
-
-        cipher.init(Cipher.DECRYPT_MODE, secret_key)
-        random_b_decrypted = list(cipher.doFinal(random_b_encrypted))
-        self.logger.info("Decrypted random B %s", byte_array_to_human_readable_hex(random_b_decrypted))
-
-        # Let's pick up by fire dice
-        # This let's us skip one XOR'ing
-        # http://java-card-desfire-emulation.googlecode.com/svn/trunk/java-card-desfire-emulation/Credit%20DESfire%20App/src/credit/DESfireApi.java
-        random_a = [0x00] * 8
-
-        cipher.init(Cipher.ENCRYPT_MODE, secret_key)
-
-        rotated_b = random_b_decrypted[1:] + random_b_decrypted[0:1]
-        cipher_text = list(cipher.update(random_a)) + list(cipher.doFinal(rotated_b))
-
-        self.logger.info("Sending in cipher text %s", byte_array_to_human_readable_hex(cipher_text))
-        assert len(cipher_text) == 16
-
-        apdu_command = self.wrap_command(0xaf, cipher_text)
-        resp = self.communicate(apdu_command, "Sending auth response")
+        # from jnius import autoclass
+        # from jnius import cast
+        #
+        # Cipher = autoclass("javax.crypto.Cipher")
+        # SecretKeySpec = autoclass("javax.crypto.spec.SecretKeySpec")
+        # SecretKeyFactory = autoclass("javax.crypto.SecretKeyFactory")
+        # IvParameterSpec = autoclass("javax.crypto.spec.IvParameterSpec")
+        # DESKeySpec = autoclass("javax.crypto.spec.DESKeySpec")
+        # DESedeKeySpec = autoclass("javax.crypto.spec.DESedeKeySpec")
+        # String = autoclass("java.lang.String")
+        #
+        # apdu_command = self.wrap_command(0x0a, [key_id])
+        # resp = self.communicate(apdu_command, "Authenticating application {:06X}".format(app_id))
+        #
+        # # http://java-card-desfire-emulation.googlecode.com/svn/trunk/java-card-desfire-emulation/Credit%20DESfire%20App/src/credit/DESfireApi.java
+        # # http://mrbigzz.blogspot.com/2014/01/android-desfire-authentication.html
+        # random_b_encrypted = list(resp)
+        # assert len(random_b_encrypted) == 8
+        #
+        # #bytes = String("xxxxXXXXxxxxXXXX").getBytes()
+        # #des_key_spec = DESedeKeySpec(bytes)
+        #
+        # cipher = Cipher.getInstance("DESede/ECB/NoPadding","BC")
+        #
+        # secret_key_spec = SecretKeySpec(private_key, "DESede")
+        # secret_key = cast("java.security.Key", secret_key_spec)
+        #
+        # cipher.init(Cipher.DECRYPT_MODE, secret_key)
+        # random_b_decrypted = list(cipher.doFinal(random_b_encrypted))
+        # self.logger.info("Decrypted random B %s", byte_array_to_human_readable_hex(random_b_decrypted))
+        #
+        # # Let's pick up by fire dice
+        # # This let's us skip one XOR'ing
+        # # http://java-card-desfire-emulation.googlecode.com/svn/trunk/java-card-desfire-emulation/Credit%20DESfire%20App/src/credit/DESfireApi.java
+        # random_a = [0x00] * 8
+        #
+        # cipher.init(Cipher.ENCRYPT_MODE, secret_key)
+        #
+        # rotated_b = random_b_decrypted[1:] + random_b_decrypted[0:1]
+        # cipher_text = list(cipher.update(random_a)) + list(cipher.doFinal(rotated_b))
+        #
+        # self.logger.info("Sending in cipher text %s", byte_array_to_human_readable_hex(cipher_text))
+        # assert len(cipher_text) == 16
+        #
+        # apdu_command = self.wrap_command(0xaf, cipher_text)
+        # resp = self.communicate(apdu_command, "Sending auth response")
 
         # http://stackoverflow.com/questions/14319321/how-can-i-do-native-authentication-in-desfire-ev1
         # http://stackoverflow.com/questions/17111451/what-kind-of-block-format-is-the-desfire-authentication-message

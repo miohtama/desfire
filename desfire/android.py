@@ -21,5 +21,3 @@ class AndroidDevice(Device):
 
         """
         return list(self.iso_dep.transrecive(bytes))
-
-

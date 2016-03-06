@@ -1,8 +1,5 @@
-
-
 class Device(object):
     """Abstract base class which uses underlying device communication channel."""
-
 
     def transceive(self, bytes):
         """Send in APDU request and wait for the response.
