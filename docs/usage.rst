@@ -4,6 +4,14 @@ Usage
 
 The library provides abstraction over DESFire command set. The communication with a NFC card must be done with an underlying library or API. DESFire provides adapters for different connection methods.
 
+* Create a native connection to NFC card using underlying libraries
+
+* Wrap this connection to proper adapter as :py:class:`desfire.device.Device` subclass
+
+* Create a :py:class:`desfire.protocol.DESFire` object for the device
+
+* Use :py:class:`desfire.protocol.DESFire` API methods
+
 PCSC example (Linux)
 ====================
 
