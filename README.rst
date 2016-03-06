@@ -1,6 +1,6 @@
-===============================
+==================
 Desfire for Python
-===============================
+==================
 
 .. image:: https://img.shields.io/pypi/v/desfire.svg
         :target: https://pypi.python.org/pypi/desfire
@@ -13,24 +13,23 @@ Desfire for Python
         :alt: Documentation Status
 
 
-This package provide Mifare DESFire communication protocol for NFC cards.
+This package provide MIFARE DESFire communication protocol for NFC cards.
 
-* Free software: ISC license
-* Documentation: https://desfire.readthedocs.org.
+Documentation: https://desfire.readthedocs.org.
 
 Features
 --------
 
-* Compatibile with Linux and USB-based NFC readers via pcscd
+* Compatibile with USB-based NFC readers via PCSC interface. PCSC API is available on Linux, OSX and Windows. Linux support includes Raspberry Pi.
 
-* Compatibile with Android and Kivy via native Android APIs
+* Compatibile with Android and Kivy via native Android APIs (`ISO-DEP API <http://developer.android.com/reference/android/nfc/tech/IsoDep.html>`_)
 
 * Only some of the commands are implemented, please feel free to add more
 
 Background
 ----------
 
-This package provides `MIFare DESFire <https://en.wikipedia.org/wiki/MIFARE>`_ native communication protocol for NFC cards.
+This package provides `MIFARE DESFire <https://en.wikipedia.org/wiki/MIFARE>`_ native communication protocol for NFC cards.
 
 `The communication protocol specification is not public <http://stackoverflow.com/a/24069446/315168>`_. The work is based on reverse engineering existing open source DESFire projects, namely `Android host card emulation for DESFire <https://github.com/jekkos/android-hce-desfire>`_ and `Mifare SDK <https://www.mifare.net/en/products/tools/mifare-sdk/>`_.
 

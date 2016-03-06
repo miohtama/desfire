@@ -5,10 +5,10 @@ class Device(object):
 
 
     def transceive(self, bytes):
-        """Send it request
-
+        """Send in APDU request and wait for the response.
 
         :param bytes: Outgoing bytes as list of bytes or byte array
-        :return: List of bytes or byte array from the device. If you expect list slicing operations explicity convert the return value to a list with ``list()``.
+
+        :return: List of bytes or byte array from the device.
         """
         raise NotImplementedError("Base class must implement")

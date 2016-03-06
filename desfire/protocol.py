@@ -1,10 +1,23 @@
-"""Mifare DESFire communication protocol for Python.
+"""MIFARE DESFire communication protocol for Python.
+
+For DESFire overview:
+
+* http://www.slideshare.net/ashu4india/mifare-des-fire-pres
+
+For list of DESFire commands see:
+
+* https://github.com/jekkos/android-hce-desfire/blob/master/hceappletdesfire/src/main/java/net/jpeelaer/hce/desfire/DesFireInstruction.java
+
+* https://www.mifare.net/files/advanced_javadoc/com/nxp/nfclib/desfire/DESFire.html
+
+* https://github.com/jekkos/android-hce-desfire/blob/master/hceappletdesfire/src/main/java/net/jpeelaer/hce/desfire/DesfireStatusWord.java
 
 """
 from __future__ import print_function
 
 import logging
 
+from desfire.util import byte_array_to_human_readable_hex, dword_to_byte_array
 
 _logger = logging.getLogger(__name__)
 
@@ -36,26 +49,6 @@ ERRORS = {
     0xf0: "File not found"
 }
 
-def byte_array_to_byte_string(bytes):
-    s = "".join([chr(b) for b in bytes])
-    return s
-
-
-def byte_array_to_human_readable_hex(bytes):
-    return " ".join(["{:02X}".format(ord(c)) for c in byte_array_to_byte_string(bytes)])
-
-
-def byte_string_to_byte_array(s):
-    return [ord(c) for c in s]
-
-
-def hex_array_to_byte_string(hex_array):
-    return "".join(chr(c) for c in hex_array)
-
-
-def dword_to_byte_array(value):
-    return [(value & 0xff), (value >> 8) & 0xff, (value >> 16) & 0xff, (value >> 24),]
-
 
 class DESFireCommunicationError(Exception):
     """Outgoing DESFire command received a non-OK reply.
@@ -68,20 +61,7 @@ class DESFireCommunicationError(Exception):
 
 
 class DESFire(object):
-    """MIFare DEefire EV1 communication protocol for NFC cards.
-
-    For DESFire overview:
-
-    * http://www.slideshare.net/ashu4india/mifare-des-fire-pres
-
-    For list of DESFire commands see:
-
-    * https://github.com/jekkos/android-hce-desfire/blob/master/hceappletdesfire/src/main/java/net/jpeelaer/hce/desfire/DesFireInstruction.java
-
-    * https://www.mifare.net/files/advanced_javadoc/com/nxp/nfclib/desfire/DESFire.html
-
-    * https://github.com/jekkos/android-hce-desfire/blob/master/hceappletdesfire/src/main/java/net/jpeelaer/hce/desfire/DesfireStatusWord.java
-    """
+    """MIFare DEefire EV1 communication protocol for NFC cards."""
 
     def __init__(self, device, logger=None):
         """
@@ -145,20 +125,12 @@ class DESFire(object):
 
         DESFire application ids are 24-bit integers.
 
-        Parameters
-        ----------
-        resp DESFire response as byte array
+        :param resp: DESFire response as byte array
 
-        Returns
-        -------
-
-        List of parsed application ids
-
+        :return: List of parsed application ids
         """
         pointer = 0
         apps = []
-        self.logger.info("Resp is %s", resp)
-        self.logger.info("Resp is %s", byte_array_to_human_readable_hex(resp))
         while pointer < len(resp):
             app_id = (resp[pointer] << 16) + (resp[pointer+1] << 8) + resp[pointer+2]
             self.logger.info("Reading %d %08x", pointer, app_id)
@@ -179,12 +151,16 @@ class DESFire(object):
         # https://ridrix.wordpress.com/2009/09/19/mifare-desfire-communication-example/
         cmd = self.wrap_command(0x6a)
         resp = self.communicate(cmd, "Read applications")
-        self.logger.info("Foobar %s", byte_array_to_human_readable_hex(resp))
         apps = self.parse_application_list(resp)
         return apps
 
-    def wrap_command(self, command, parameters=None):
+    @classmethod
+    def wrap_command(cls, command, parameters=None):
         """Wrap a command to native DES framing.
+
+        :param command: Command byte
+
+        :param parameters: Command parameters as list of bytes
 
         https://github.com/greenbird/workshops/blob/master/mobile/Android/Near%20Field%20Communications/HelloWorldNFC%20Desfire%20Base/src/com/desfire/nfc/DesfireReader.java#L129
         """
@@ -227,6 +203,12 @@ class DESFire(object):
         * https://github.com/jekkos/android-hce-desfire/blob/master/hceappletdesfire/src/main/java/net/jpeelaer/hce/desfire/DesFireInstruction.java
 
         Here we use legacy authentication (0xa0)
+
+        :param app_id: 24-bit app id
+
+        :param key_id: One of 0-16 keys on the card as byte
+
+        :param private_key: 8 or 16 bytes of private key
         """
 
         raise NotImplementedError("Still needs to be done in a proper manner.")
@@ -286,15 +268,11 @@ class DESFire(object):
     def read_file(self, file_id):
         """Read one DESFire file.
 
-        Parameters
-        ----------
-        file_id File id as a byte
+        :param file_id: File id as a byte
 
-        Returns
-        -------
-
-        File data
+        :return: File data as byte array
         """
+        raise NotImplementedError()
         apdu_command = self.wrap_command(0x8d, [file_id, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
         resp = self.communicate(apdu_command, "Reading file {:02X}".format(file_id))
 
@@ -303,21 +281,17 @@ class DESFire(object):
     def get_file_settings(self, file_id):
         """Get DESFire file settings.
 
-        Parameters
-        ----------
-        file_id File id as a byte
 
-        Returns
-        -------
+        :param file_id: File id as a byte
 
-        File description dict.
+        :return: File description dict.
         """
         apdu_command = self.wrap_command(0xf5, [file_id])
         resp = self.communicate(apdu_command, "Reading file description {:02X}".format(file_id))
 
         file_desc = {
-            "type": self.FILE_TYPES[resp[0]],
-            "communication": self.FILE_COMMUNICATION[resp[1]],
+            "type": FILE_TYPES[resp[0]],
+            "communication": FILE_COMMUNICATION[resp[1]],
             "rw_flags": resp[2:4],
             "length": resp[4] | (resp[5] << 8) | (resp[6] << 16)
         }
@@ -344,26 +318,22 @@ class DESFire(object):
     def credit_value(self, file_id, added_value):
         """Increase stored value.
 
-        Parameters
-        ----------
-        file_id (byte)
+        :param file_id: (byte)
 
-        added_value (int, 32 bit) Value to be added to the current value
+        :param added_value: (int, 32 bit) Value to be added to the current value
         """
 
         value = dword_to_byte_array(added_value)
 
         apdu_command = self.wrap_command(0x0c, [file_id] + value)
-        self.communicate(apdu_command, "Crediting file {:02X} value {:08X}".format(file_id, added_value ))
+        self.communicate(apdu_command, "Crediting file {:02X} value {:08X}".format(file_id, added_value))
 
     def debit_value(self, file_id, value_decrease):
         """Decrease stored value.
 
-        Parameters
-        ----------
-        file_id (byte)
+        :param file_id: (byte)
 
-        value_decrease (int, 32 bit) How much we reduce from existing value
+        :param value_decrease:  (int, 32 bit) How much we reduce from existing value
 
         Example
         -------
@@ -474,29 +444,30 @@ class DESFire(object):
         self.communicate(apdu_command, "Commiting file changes")
 
     def delete_file(self, file_id):
-        """Delete a file."""
+        """Delete a file.
+
+        :param file_id: byte
+        """
 
         apdu_command = self.wrap_command(0xDF, [file_id])
         self.communicate(apdu_command, "Deleting file {:02X}".format(file_id))
 
-    def create_value_file(self, file_id, communication_settings, access_permissions, min_value, max_value, current_value,limited_credit_enabled):
+    def create_value_file(self, file_id, communication_settings, access_permissions, min_value, max_value, current_value, limited_credit_enabled):
         """Create a new value file.
 
-        Parameters
-        ----------
-        file_id (byte)
+        :param file_id: (byte)
 
-        communication_settings (byte) See FILE_COMMUNICATION
+        :param communication_settings: (byte) See FILE_COMMUNICATION
 
-        access_permissions (word) 0xeeee Everybody has read write access
+        :param access_permissions: (word) 0xeeee Everybody has read write access
 
-        current_value (dword)
+        :param current_value: (dword)
 
-        max_value (dword)
+        :param max_value: (dword)
 
-        min_value (dword)
+        :param min_value: (dword)
 
-        limited_credit_enabled (byte) Allows limited increase in value file without having full credit permission.
+        :param limited_credit_enabled: (byte) Allows limited increase in value file without having full credit permission.
 
         Example
         -------
@@ -528,7 +499,7 @@ class DESFire(object):
 
         parameters = [file_id]
 
-        assert communication_settings in self.FILE_COMMUNICATION
+        assert communication_settings in FILE_COMMUNICATION
         parameters += [communication_settings]
         parameters += [access_permissions & 0xff, access_permissions >> 8]
         parameters += dword_to_byte_array(min_value)
