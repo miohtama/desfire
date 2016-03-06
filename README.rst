@@ -20,7 +20,7 @@ Documentation: https://desfire.readthedocs.org.
 Features
 --------
 
-* Compatibile with USB-based NFC readers via PCSC interface. PCSC API is available on Linux, OSX and Windows. Linux support includes Raspberry Pi.
+* Compatibile with USB-based NFC readers via PCSC interface. PCSC API is available on Linux, OSX and Windows. Linux support includes support for Raspberry Pi.
 
 * Compatibile with Android and Kivy via native Android APIs (`ISO-DEP API <http://developer.android.com/reference/android/nfc/tech/IsoDep.html>`_)
 
