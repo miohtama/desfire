@@ -15,7 +15,7 @@ You need `pyscard <https://pypi.python.org/pypi/pyscard>`_ and it's dependencies
 
 .. code-block:: console
 
-    apt install swig3.0 libpcsclite-dev pcscd
+    apt install swig swig3.0 libpcsclite-dev pcscd
 
 *pyscard* must be installed by hand (see `issue <https://github.com/LudovicRousseau/pyscard/issues/15>`_):
 

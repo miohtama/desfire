@@ -55,7 +55,7 @@ source_suffix = '.rst'
 master_doc = 'index'
 
 # General information about the project.
-project = u'Desfire for Python'
+project = u'MIFARE DESFire NFC card communication protocol for Python'
 copyright = u'2016, Mikko Ohtamaa'
 
 # The version info for the project you're documenting, acts as replacement
@@ -240,7 +240,7 @@ latex_documents = [
 # (source start file, name, description, authors, manual section).
 man_pages = [
     ('index', 'desfire',
-     u'Desfire for Python Documentation',
+     u'DESFire for Python Documentation',
      [u'Mikko Ohtamaa'], 1)
 ]
 
@@ -255,7 +255,7 @@ man_pages = [
 #  dir menu entry, description, category)
 texinfo_documents = [
     ('index', 'desfire',
-     u'Desfire for Python Documentation',
+     u'MIFAR DESFire for Python Documentation',
      u'Mikko Ohtamaa',
      'desfire',
      'One line description of project.',

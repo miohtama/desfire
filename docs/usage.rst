@@ -12,10 +12,10 @@ The library provides abstraction over DESFire command set. The communication wit
 
 * Use :py:class:`desfire.protocol.DESFire` API methods
 
-PCSC example (Linux)
-====================
+PCSC example
+============
 
-Below is an example how to interface with DESFire API using `pcscd <http://linux.die.net/man/8/pcscd>`_ daemon and `pycard library <http://pyscard.sourceforge.net/>`_:
+Below is an example how to interface with DESFire API using `pcscd <http://linux.die.net/man/8/pcscd>`_ daemon and `pycard library <http://pyscard.sourceforge.net/>`_. It should work on OSX, Linux and Windows including Raspberry Pi:
 
 .. code-block:: python
 

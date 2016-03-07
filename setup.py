@@ -25,7 +25,7 @@ test_requirements = [
 setup(
     name='desfire',
     version='0.1.0',
-    description="Provide Mifare DESFire NFC card communication protocol",
+    description="MIFARE DESFire NFC card communication protocol",
     long_description=readme + '\n\n' + history,
     author="Mikko Ohtamaa",
     author_email='mikko@opensourcehacker.com',
@@ -39,11 +39,10 @@ setup(
     install_requires=requirements,
     license="BSD",
     zip_safe=False,
-    keywords='desfire',
+    keywords='desfire nfc mifare 14443',
     classifiers=[
-        'Development Status :: 2 - Pre-Alpha',
+        'Development Status :: 3 - Alpha',
         'Intended Audience :: Developers',
-        'License :: OSI Approved :: ISC License (ISCL)',
         'Natural Language :: English',
         "Programming Language :: Python :: 2",
         'Programming Language :: Python :: 2.7',
