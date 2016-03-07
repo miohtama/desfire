@@ -15,7 +15,13 @@ Desfire for Python
 
 This package provide MIFARE DESFire communication protocol for NFC cards using Python.
 
-Documentation: https://desfire.readthedocs.org.
+Source code: https://github.com/miohtama/desfire
+
+Documentation: https://desfire.readthedocs.org
+
+.. image:: https://raw.githubusercontent.com/miohtama/desfire/master/docs/desfire.jpg
+
+*In photo: MIFARE Desfire EV1 8kB blank card with Identive Identive CLOUD 4500 F Dual Interface Reader*
 
 Features
 --------
