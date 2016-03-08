@@ -21,7 +21,7 @@ Documentation: https://desfire.readthedocs.org
 
 .. image:: https://raw.githubusercontent.com/miohtama/desfire/master/docs/desfire.jpg
 
-*In photo: MIFARE DESFire EV1 8kB blank card with Identive Identive CLOUD 4500 F Dual Interface Reader*
+*In photo: MIFARE DESFire EV1 8kB blank card with Identive CLOUD 4500 F Dual Interface Reader*
 
 Features
 --------

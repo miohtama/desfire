@@ -55,7 +55,7 @@ source_suffix = '.rst'
 master_doc = 'index'
 
 # General information about the project.
-project = u'MIFARE DESFire NFC card communication protocol for Python'
+project = u'DESFire for Python'
 copyright = u'2016, Mikko Ohtamaa'
 
 # The version info for the project you're documenting, acts as replacement
