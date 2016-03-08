@@ -1,6 +1,6 @@
-==================
-Desfire for Python
-==================
+=========================
+MIFARE DESFire for Python
+=========================
 
 .. image:: https://img.shields.io/pypi/v/desfire.svg
         :target: https://pypi.python.org/pypi/desfire
