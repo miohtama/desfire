@@ -20,3 +20,7 @@ def hex_array_to_byte_string(hex_array):
 
 def dword_to_byte_array(value):
     return [(value & 0xff), (value >> 8) & 0xff, (value >> 16) & 0xff, (value >> 24), ]
+
+
+def word_to_byte_array(value):
+    return [(value & 0xff), (value >> 8) & 0xff]

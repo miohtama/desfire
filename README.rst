@@ -32,6 +32,8 @@ Features
 
 * Only some of the commands are implemented in the current alpha quality version, please feel free to add more.
 
+* Compatible with Python 2 and Python 3
+
 Background
 ----------
 

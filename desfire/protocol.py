@@ -12,13 +12,19 @@ For list of DESFire commands see:
 
 * https://github.com/jekkos/android-hce-desfire/blob/master/hceappletdesfire/src/main/java/net/jpeelaer/hce/desfire/DesfireStatusWord.java
 
+* https://github.com/nfc-tools/libfreefare/blob/master/libfreefare/mifare_desfire.c
+
+* https://github.com/codebutler/farebot/blob/master/src/main/java/com/codebutler/farebot/card/desfire/DesfireProtocol.java
+
 """
 from __future__ import print_function
 
 import logging
+import time
 
-from desfire.device import Device
-from desfire.util import byte_array_to_human_readable_hex, dword_to_byte_array
+from .device import Device
+from .util import byte_array_to_human_readable_hex, dword_to_byte_array, word_to_byte_array
+
 
 _logger = logging.getLogger(__name__)
 
@@ -47,7 +53,8 @@ ERRORS = {
     0xae: "Authentication error",
     0x7e: "Length error when sending the command",
     0x0c: "No changes",
-    0xf0: "File not found"
+    0xf0: "File not found",
+    0xbd: "File not found",
 }
 
 
@@ -80,7 +87,7 @@ class DESFire(object):
         else:
             self.logger = _logger
 
-    def communicate(self, apdu_cmd, description):
+    def communicate(self, apdu_cmd, description, allow_continue_fallthrough=False):
         """Communicate with a NFC tag.
 
         Send in outgoing request and waith for a card reply.
@@ -89,39 +96,53 @@ class DESFire(object):
 
         :param apdu_cmd: Outgoing APDU command as array of bytes
         :param description: Command description for logging purposes
+        :param allow_continue_fallthrough: If True 0xAF response (incoming more data, need mode data) is instantly returned to the called instead of trying to handle it internally
         :raise: :py:class:`desfire.protocol.DESFireCommunicationError` on any error
 
-        :return: APDU response as array of bytes
+        :return: tuple(APDU response as list of bytes, bool if additional frames are inbound)
         """
-        apdu_cmd_hex = [hex(c) for c in apdu_cmd]
-        self.logger.debug("Running APDU command %s, sending: %s", description, apdu_cmd_hex)
 
-        resp = self.device.transceive(apdu_cmd)
-        self.logger.debug("Received APDU response: %s", byte_array_to_human_readable_hex(resp))
+        result = []
+        additional_framing_needed = True
 
-        if resp[-2] != 0x91:
-            raise DESFireCommunicationError("Received invalid response for command: {}".format(description), resp[-2:])
+        # TODO: Clean this up so read/write implementations have similar mechanisms and all continue is handled internally
+        while additional_framing_needed:
 
-        status = resp[-1]
+            apdu_cmd_hex = [hex(c) for c in apdu_cmd]
+            self.logger.debug("Running APDU command %s, sending: %s", description, apdu_cmd_hex)
 
-        # Possible status words: https://github.com/jekkos/android-hce-desfire/blob/master/hceappletdesfire/src/main/java/net/jpeelaer/hce/desfire/DesfireStatusWord.java
+            resp = self.device.transceive(apdu_cmd)
+            self.logger.debug("Received APDU response: %s", byte_array_to_human_readable_hex(resp))
 
-        # Check for known erors
-        error_msg = ERRORS.get(status)
-        if error_msg:
-            raise DESFireCommunicationError(error_msg, status)
+            if resp[-2] != 0x91:
+                raise DESFireCommunicationError("Received invalid response for command: {}".format(description), resp[-2:])
 
-        if status == 0xaf:
-            # TODO: Additional framing
-            pass
-        elif status != 0x00:
-            raise DESFireCommunicationError("Error {:02x} when communicating".format(status), status)
+            # Possible status words: https://github.com/jekkos/android-hce-desfire/blob/master/hceappletdesfire/src/main/java/net/jpeelaer/hce/desfire/DesfireStatusWord.java
+            status = resp[-1]
 
-        # This will un-memoryview this object as there seems to be some pyjnius
-        # bug getting this corrupted down along the line
-        unframed = list(resp[0:-2])
+            # Check for known error interpretation
+            error_msg = ERRORS.get(status)
+            if error_msg:
+                raise DESFireCommunicationError(error_msg, status)
 
-        return unframed
+            if status == 0xaf:
+                if allow_continue_fallthrough:
+                    additional_framing_needed = False
+                else:
+                    # Need to loop more cycles to fill in receive buffer
+                    additional_framing_needed = True
+                    apdu_cmd = self.wrap_command(0xaf)  # Continue
+            elif status != 0x00:
+                raise DESFireCommunicationError("Error {:02x} when communicating".format(status), status)
+            else:
+                additional_framing_needed = False
+
+            # This will un-memoryview this object as there seems to be some pyjnius
+            # bug getting this corrupted down along the line
+            unframed = list(resp[0:-2])
+            result += unframed
+
+        return result
 
     def parse_application_list(self, resp):
         """Handle response for command 0x6a list applications.
@@ -268,19 +289,6 @@ class DESFire(object):
         # https://ridrix.wordpress.com/2009/09/19/mifare-desfire-communication-example/
         # http://stackoverflow.com/questions/14117025/des-send-and-receive-modes-for-desfire-authentication
 
-    def read_file(self, file_id):
-        """Read one DESFire file.
-
-        :param file_id: File id as a byte
-
-        :return: File data as byte array
-        """
-        raise NotImplementedError()
-        apdu_command = self.wrap_command(0x8d, [file_id, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
-        resp = self.communicate(apdu_command, "Reading file {:02X}".format(file_id))
-
-        return resp[1:]
-
     def get_file_settings(self, file_id):
         """Get DESFire file settings.
 
@@ -296,8 +304,22 @@ class DESFire(object):
             "type": FILE_TYPES[resp[0]],
             "communication": FILE_COMMUNICATION[resp[1]],
             "rw_flags": resp[2:4],
-            "length": resp[4] | (resp[5] << 8) | (resp[6] << 16)
         }
+
+        if resp[0] == 0x03:
+            # Linear record file
+            file_desc.update({
+                # Length of ONE records
+                "record_length": resp[4] | (resp[5] << 8) | (resp[6] << 16),
+                "num_of_records": resp[7],
+            })
+        elif resp[0] == 0x00:
+            # Data file
+            file_desc.update({
+                "file_length": resp[4] | (resp[5] << 8) | (resp[6] << 16),
+            })
+        else:
+            raise NotImplementedError("Please fill in logic for file type {:02X}".format(resp[0]))
 
         return file_desc
 
@@ -310,7 +332,6 @@ class DESFire(object):
         """
         apdu_command = self.wrap_command(0x6c, [file_id])
         resp = self.communicate(apdu_command, "Reading value {:02X}".format(file_id))
-        # TODO: Not sure about the order of higher bits (32 bit?)
         return (resp[3] << 24) | (resp[2] << 16) | (resp[1] << 8) | resp[0]
 
     def credit_value(self, file_id, added_value):
@@ -371,10 +392,10 @@ class DESFire(object):
                             return
 
                         desfire = DESFire(self.device, Logger)
-                        desfire.select_application(WATTCOIN_APP_ID)
+                        desfire.select_application(XXX_APP_ID)
 
-                        desfire.debit_value(WATTCOIN_FILE_STORED_VALUE, 1)
-                        new_value = desfire.get_value(WATTCOIN_FILE_STORED_VALUE)
+                        desfire.debit_value(XXX_FILE_STORED_VALUE, 1)
+                        new_value = desfire.get_value(XXX_FILE_STORED_VALUE)
                         desfire.commit()
 
                         # Show how much value we have after burn
@@ -428,7 +449,7 @@ class DESFire(object):
 
                 try:
 
-                    desfire.select_application(WATTCOIN_APP_ID)
+                    desfire.select_application(XXX_APP_ID)
                     old_value = desfire.get_value(0x01)
                     desfire.credit_value(0x01, added_value)
                     desfire.commit()
@@ -478,16 +499,16 @@ class DESFire(object):
                 desfire = DESFire(device, Logger)
 
                 try:
-                    desfire.select_application(WATTCOIN_APP_ID)
+                    desfire.select_application(XXX_APP_ID)
 
                     file_ids = desfire.get_file_ids()
-                    if WATTCOIN_FILE_STORED_VALUE in file_ids:
-                        old_value = desfire.get_value(WATTCOIN_FILE_STORED_VALUE)
-                        desfire.delete_file(WATTCOIN_FILE_STORED_VALUE)
+                    if XXX_FILE_STORED_VALUE in file_ids:
+                        old_value = desfire.get_value(XXX_FILE_STORED_VALUE)
+                        desfire.delete_file(XXX_FILE_STORED_VALUE)
                     else:
                         old_value = None
 
-                    desfire.create_value_file(file_id=WATTCOIN_FILE_STORED_VALUE, communication_settings=0x00, access_permissions=0xeeee, min_value=0, max_value=1000000, current_value=value, limited_credit_enabled=0)
+                    desfire.create_value_file(file_id=XXX_FILE_STORED_VALUE, communication_settings=0x00, access_permissions=0xeeee, min_value=0, max_value=1000000, current_value=value, limited_credit_enabled=0)
 
                     return old_value
                 finally:
@@ -506,3 +527,134 @@ class DESFire(object):
 
         apdu_command = self.wrap_command(0xcc, parameters)
         self.communicate(apdu_command, "Creating value file {:02X}".format(file_id))
+
+    def read_linear_record_file(self, file_id, offset_in_records, length_in_records):
+        """Read all records of a linear record file.
+
+        :param file_id: File id, 8-bit int
+        :param offset_in_records: First record to read, 16-bit int
+        :param length_in_records: Number of records to read, 16-bit int
+        :return: File data as bytes
+        """
+
+        raise NotImplementedError()
+
+        # This will simply read the whole file once
+        # parameters = [file_id]
+        # parameters = [file_id, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+        # # parameters += word_to_byte_array(offset_in_records)
+        # # parameters += [0x00]  # 24-bit
+        # # parameters += word_to_byte_array(length_in_records)
+        # # parameters += [0x00]  # 24-bit
+        #
+        # apdu_command = self.wrap_command(0xbb, parameters)
+        # return self.communicate(apdu_command, "Reading bytes from offset {} length {} in a line record file file {:02X}".format(offset_in_records, length_in_records, file_id))
+
+    def read_data_file(self, file_id):
+        """Read standard data file.
+
+        If the data file is unwritten (no single write since card format) an exception is raised. Might be permission error or similar.
+
+        Example::
+
+            def write_test(desfire):
+                '''Write a long data file to see card write functions work.
+
+                Assume the card is formatted with 7000 bytes test file. If we do not fill in file bytes during write, then the next read will reflect back whatever garbage we left there unwritten.
+                '''
+                logger.debug("Writing and reading back a test file")
+                desfire.select_application(XXX_APP_ID)
+                file_settings = desfire.get_file_settings(XXX_BACKCHANNEL_FILE)
+                logger.debug("File settings info %s", file_settings)
+
+                data = [0xff]
+                data += [0xaa] * 4000
+                data += [0xbb]
+                desfire.write_data_file(XXX_BACKCHANNEL_FILE, data)
+
+                # Standard files do not have any kind of commit of write corruption or commit support,
+                # so no need to commit here
+
+                # Now read it back
+                read_back_data = desfire.read_data_file(XXX_BACKCHANNEL_FILE)
+                assert len(read_back_data) == 7000
+
+                assert data == read_back_data[0:4002]
+
+        :param file_id: File id to read, 8-bit int
+        :return: List of bytes
+        """
+        parameters = [file_id, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+
+        start_time = time.time()
+        apdu_command = self.wrap_command(0xbd, parameters)
+
+        buffer = self.communicate(apdu_command, "Reading data file {:02X}".format(file_id))
+
+        duration = time.time() - start_time
+        self.logger.debug("Finished reading %d bytes in %f seconds", len(buffer), duration)
+
+        return buffer
+
+    def write_linear_record_file_record(self, file_id, offset_in_records, length_in_records, data):
+        """Write n records in a linear record file.
+
+        :param file_id: File id, 8-bit int
+        :param offset_in_records: First record to read, 16-bit int
+        :param length_in_records: Number of records to read, 16-bit int
+        :param data: bytes or list of bytes
+        :return: File data as bytes
+        """
+        raise NotImplementedError()
+
+        # parameters = [file_id]
+        # parameters += word_to_byte_array(offset_in_records)
+        # parameters += [0x00]  # 24bit
+        # parameters += word_to_byte_array(length_in_records)
+        # parameters += [0x00]  # 24bit
+        # #parameters += [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+        #
+        # data_pointer = 0
+        # max_apdu_write_length = 52
+        #
+        # while data_pointer < len(data):
+        #     chunk = data[data_pointer:data_pointer + max_apdu_write_length]
+        #     parameters = parameters + chunk
+        #     apdu_command = self.wrap_command(0x3d, parameters)
+        #     self.communicate(apdu_command, "Writing line record file file {:02X} offset {} length {} current write pointer {}".format(file_id, offset_in_records, length_in_records, data_pointer))
+
+    def write_data_file(self, file_id, data):
+        """Write the data to a standard data file.
+
+        :param file_id: File number to write, 8-bit int
+        :param data: Data as bytes or array of bytes
+        """
+
+        parameters = [file_id]
+        parameters += word_to_byte_array(0)  # offset 0
+        parameters += [0x00]  # 24-bit
+        parameters += word_to_byte_array(len(data))
+        parameters += [0x00]  # 24-bit
+
+        data_pointer = 0
+        max_apdu_write_length = 47  # Actual max value found by experimenting
+        command = 0x3d  # WRITE DATA
+        cycles = 0
+        start_time = time.time()
+
+        while data_pointer < len(data):
+            chunk = data[data_pointer:data_pointer + max_apdu_write_length]
+            parameters = parameters + chunk
+            apdu_command = self.wrap_command(command, parameters)
+            self.communicate(apdu_command, "Writing line record file file {:02X}, current command {:02X} write pointer: {}".format(file_id, command, data_pointer), allow_continue_fallthrough=True)
+
+            data_pointer += max_apdu_write_length
+
+            # Use different parameters for the 2nd ... nth write cycle
+            command = 0xaf  # CONTINUE
+            max_apdu_write_length = 54
+            parameters = []
+            cycles += 1
+
+        duration = time.time() - start_time
+        self.logger.debug("Finished writing %d bytes in %d commands and %f seconds", len(data), cycles, duration)

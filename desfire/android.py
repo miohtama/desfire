@@ -20,4 +20,4 @@ class AndroidDevice(Device):
             Android API may return byte array memory views that are easily corrupted by native APIs, so we just copy all incoming bytes to a proper list as soon as possible on Android.
 
         """
-        return list(self.iso_dep.transrecive(bytes))
+        return list(self.iso_dep.transceive(bytes))
