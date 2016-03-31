@@ -24,7 +24,7 @@ test_requirements = [
 
 setup(
     name='desfire',
-    version='0.2.dev0',
+    version='0.2',
     description="MIFARE DESFire NFC card communication protocol",
     long_description=readme + '\n\n' + history,
     author="Mikko Ohtamaa",

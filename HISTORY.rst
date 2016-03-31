@@ -2,7 +2,7 @@
 History
 =======
 
-0.2 (unreleased)
+0.2 (2016-03-30)
 ----------------
 
 - Added data file read and write
