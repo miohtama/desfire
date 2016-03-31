@@ -553,7 +553,7 @@ class DESFire(object):
     def read_data_file(self, file_id):
         """Read standard data file.
 
-        If the data file is unwritten (no single write since card format) an exception is raised. Might be permission error or similar.
+        If the data file is unwritten (no single write since card format) it should return 0x00 as data after format.
 
         Example::
 
@@ -641,6 +641,8 @@ class DESFire(object):
         command = 0x3d  # WRITE DATA
         cycles = 0
         start_time = time.time()
+
+        self.logger.debug("Attempting to write %d bytes to a data file %02x", len(data), file_id)
 
         while data_pointer < len(data):
             chunk = data[data_pointer:data_pointer + max_apdu_write_length]
