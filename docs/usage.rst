@@ -2,6 +2,11 @@
 Usage
 =====
 
+.. contents:: :local:
+
+Introduction
+============
+
 The library provides abstraction over DESFire command set. The communication with a NFC card must be done with an underlying library or API. DESFire provides adapters for different connection methods.
 
 * Create a native connection to NFC card using underlying libraries
@@ -132,6 +137,9 @@ Below is an example how to interface with DESFire API using `pcscd <http://linux
 
 Continuous card connection
 ==========================
+
+Example 1
+---------
 
 Here is another more advanced example. When the card is attached to the reader, keep connecting to the card continuously and decrease it's stored value file 1 credit per second until we have consumed all the credit.
 
@@ -330,3 +338,104 @@ Here is another more advanced example. When the card is attached to the reader, 
 
     if __name__ == "__main__":
         main()
+
+Example 2
+---------
+
+Another example reading a known Standard Data File off from DESFire and writing it on a disk.
+
+.. code-block:: python
+
+    """Read a data file off the card and store on FS."""
+    import time
+
+    import sys
+
+    from smartcard.CardMonitoring import CardMonitor, CardObserver
+    from smartcard.util import toHexString
+    from smartcard.CardConnectionObserver import ConsoleCardConnectionObserver
+    from smartcard.System import readers
+
+    from desfire.protocol import DESFire
+    from desfire.pcsc import PCSCDevice
+
+    from xxxboxpi.graceful import catch_gracefully
+    from xxxboxpi.log import setup_logging
+    from xxxboxpi.main import XXX_APP_ID, logging
+    from xxxboxpi.main import XXX_BACKCHANNEL_FILE
+
+
+    DUMP_NAME = "carddump.bin.tmp"
+
+    logger = None
+
+
+    class MyObserver(CardObserver):
+        """Observe when a card is inserted. Then try to run DESFire application listing against it."""
+
+        @catch_gracefully()
+        def update(self, observable, actions):
+
+            (addedcards, removedcards) = actions
+
+            logger.info("Card action observed, %s", actions)
+
+            for card in addedcards:
+                logger.info("+ Inserted: %s", toHexString(card.atr))
+
+                if not card.atr:
+                    logger.warn("Did not correctly detected card insert")
+                    continue
+
+                connection = card.createConnection()
+                connection.connect()
+                card.connection = connection.component
+
+                # This will log raw card traffic to console
+                connection.addObserver(ConsoleCardConnectionObserver())
+
+                # connection object itself is CardConnectionDecorator wrapper
+                # and we need to address the underlying connection object
+                # directly
+                logger.debug("Opened connection %s", connection.component)
+
+                desfire = DESFire(PCSCDevice(connection.component))
+                applications = desfire.get_applications()
+
+                if XXX_APP_ID in applications:
+                    # Get our compact fs state
+                    desfire.select_application(XXX_APP_ID)
+                    data = desfire.read_data_file(XXX_BACKCHANNEL_FILE)
+                    with open(DUMP_NAME, "wb") as out:
+                        out.write(bytes(data))
+                    logger.info("Wrote %s", DUMP_NAME)
+
+                else:
+                    logger.warn("DESFire card doesn't have the required application. Maybe not properly formatted?")
+
+            for card in removedcards:
+                logger.info("- Removed: %s", toHexString(card.atr))
+
+    def main():
+        global logger
+        global consumer
+        global event_monitor
+
+        setup_logging()
+        logger = logging.getLogger(__name__)
+
+        available_reader = readers()
+        if not available_reader:
+            sys.exit("No card readers detected")
+
+        card_monitor = CardMonitor()
+        card_observer = MyObserver()
+        card_monitor.addObserver(card_observer)
+
+        while True:
+            time.sleep(1)
+
+
+    if __name__ == "__main__":
+        main()
+
