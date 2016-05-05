@@ -319,7 +319,9 @@ class DESFire(object):
                 "file_length": resp[4] | (resp[5] << 8) | (resp[6] << 16),
             })
         else:
-            raise NotImplementedError("Please fill in logic for file type {:02X}".format(resp[0]))
+            # TODO: We can still access common attributes
+            # raise NotImplementedError("Please fill in logic for file type {:02X}".format(resp[0]))
+            pass
 
         return file_desc
 

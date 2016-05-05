@@ -127,7 +127,7 @@ Below is an example how to interface with DESFire API using `pcscd <http://linux
         while True:
             time.sleep(1)
 
-        # don't forget to remove observer, or the
+        # don't forget to remove§ observer, or the
         # monitor will poll forever...
         cardmonitor.deleteObserver(cardobserver)
 

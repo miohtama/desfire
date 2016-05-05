@@ -5,7 +5,7 @@ History
 0.3 (unreleased)
 ----------------
 
-- Nothing changed yet.
+- Made unknown file types ignored, instead of raising an error
 
 
 0.2 (2016-03-30)
