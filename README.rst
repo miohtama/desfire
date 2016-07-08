@@ -34,6 +34,8 @@ Features
 
 * Compatible with Python 2 and Python 3
 
+* Currently supports only PLAIN DESFire communication mode (`see this error 6E 00 <http://stackoverflow.com/questions/19589534/android-nfc-communication-with-mifare-desfire-ev1>`_)
+
 Background
 ----------
 
