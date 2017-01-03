@@ -16,11 +16,16 @@ For list of DESFire commands see:
 
 * https://github.com/codebutler/farebot/blob/master/src/main/java/com/codebutler/farebot/card/desfire/DesfireProtocol.java
 
+* https://github.com/nceruchalu/easypay/blob/master/mifare/mifare.c
+
+* http://webcache.googleusercontent.com/search?q=cache:6ZnWrYzNzLIJ:apidoc.springcard.com/sprox_desfire/sprox_desfire_auth_c.html+&cd=10&hl=en&ct=clnk&gl=us
 """
 from __future__ import print_function
 
 import logging
 import time
+
+import pyDes
 
 from .device import Device
 from .util import byte_array_to_human_readable_hex, dword_to_byte_array, word_to_byte_array
@@ -82,10 +87,27 @@ class DESFire(object):
 
         self.device = device
 
+        #: 8 bytes of session key after authenticate()
+        self.session_key = None
+
         if logger:
             self.logger = logger
         else:
             self.logger = _logger
+
+    def decrypt_response(self, response, private_key=b"\00" * 16, session_key=None):
+        """Decrypt the autheticated session answer from the card.
+
+        .. warn ::
+
+            Does not check CMAC.
+        """
+
+        initial_value = b"\00" * 8
+        k = pyDes.triple_des(bytes(private_key), pyDes.CBC, initial_value, pad=None, padmode=pyDes.PAD_NORMAL)
+
+        decrypted = [b for b in (k.decrypt(bytes(response)))]
+        import pdb ; pdb.set_trace()
 
     def communicate(self, apdu_cmd, description, allow_continue_fallthrough=False):
         """Communicate with a NFC tag.
@@ -95,8 +117,11 @@ class DESFire(object):
         TODO: Handle additional framing via 0xaf
 
         :param apdu_cmd: Outgoing APDU command as array of bytes
+
         :param description: Command description for logging purposes
+
         :param allow_continue_fallthrough: If True 0xAF response (incoming more data, need mode data) is instantly returned to the called instead of trying to handle it internally
+
         :raise: :py:class:`desfire.protocol.DESFireCommunicationError` on any error
 
         :return: tuple(APDU response as list of bytes, bool if additional frames are inbound)
@@ -144,6 +169,21 @@ class DESFire(object):
 
         return result
 
+    @classmethod
+    def wrap_command(cls, command, parameters=None):
+        """Wrap a command to native DES framing.
+
+        :param command: Command byte
+
+        :param parameters: Command parameters as list of bytes
+
+        https://github.com/greenbird/workshops/blob/master/mobile/Android/Near%20Field%20Communications/HelloWorldNFC%20Desfire%20Base/src/com/desfire/nfc/DesfireReader.java#L129
+        """
+        if parameters:
+            return [0x90, command, 0x00, 0x00, len(parameters)] + parameters + [0x00]
+        else:
+            return [0x90, command, 0x00, 0x00, 0x00]
+
     def parse_application_list(self, resp):
         """Handle response for command 0x6a list applications.
 
@@ -166,9 +206,8 @@ class DESFire(object):
     def get_applications(self):
         """Get all applications listed in Desfire root.
 
-        TODO: Check byte order here
+        :return: List of 24-bit integer
 
-        :return: List of 24-bit intesx
         :raise: :py:class:`desfire.protocol.DESFireCommunicationError` on any error
         """
 
@@ -178,27 +217,28 @@ class DESFire(object):
         apps = self.parse_application_list(resp)
         return apps
 
-    @classmethod
-    def wrap_command(cls, command, parameters=None):
-        """Wrap a command to native DES framing.
+    def get_card_uid(self):
+        """Get card UID number.
 
-        :param command: Command byte
+        .. note ::
 
-        :param parameters: Command parameters as list of bytes
+            No idea how this works. Gives you 16 bytes of random data. Don't know how to decrypt.
 
-        https://github.com/greenbird/workshops/blob/master/mobile/Android/Near%20Field%20Communications/HelloWorldNFC%20Desfire%20Base/src/com/desfire/nfc/DesfireReader.java#L129
+        http://stackoverflow.com/questions/29819356/apdu-for-get-uid-from-mifare-desfire
+
+        https://www.mifare.net/support/forum/topic/desfire-ev1-uid-unique-and-always-returned/
+
+        :return: 16 bytes of random data?
         """
-        if parameters:
-            return [0x90, command, 0x00, 0x00, len(parameters)] + parameters + [0x00]
-        else:
-            return [0x90, command, 0x00, 0x00, 0x00]
+        cmd = self.wrap_command(0x5f)
+        resp = self.communicate(cmd, "Read UID")
+        return resp
 
     def select_application(self, app_id):
         """Choose application on a card on which all the following file commands will apply.
 
-        TODO: Check byte order here
-
         :param app_id: 24-bit int
+
         :raise: :py:class:`desfire.protocol.DESFireCommunicationError` on any error
         """
         # https://github.com/greenbird/workshops/blob/master/mobile/Android/Near%20Field%20Communications/HelloWorldNFC%20Desfire%20Base/src/com/desfire/nfc/DesfireReader.java#L53
@@ -219,23 +259,74 @@ class DESFire(object):
         # Byte ids are directly the ids of files
         return resp
 
-    def authenticate(self, app_id, key_id, private_key=[0x00] * 16):
+    def authenticate(self, key_id, private_key=[0x00] * 16):
         """Hacked together Android only DESFire authentication.
 
-        Desfire supports multiple authentication modes, see:
+        Desfire supports multiple authentication modes, but this does on triple-DES (TDES, 3DES).
+
+        Here we use legacy authentication (0xa0). After calling this function the :py:class:`DESFire` object is authenticated and will decrypt the future responses using the session key.
+
+        .. warn ::
+
+            This authentication is not a safe and just for demostration purposes.
+
+        More info
 
         * https://github.com/jekkos/android-hce-desfire/blob/master/hceappletdesfire/src/main/java/net/jpeelaer/hce/desfire/DesFireInstruction.java
 
-        Here we use legacy authentication (0xa0)
+        * http://stackoverflow.com/questions/14117025/des-send-and-receive-modes-for-desfire-authentication
 
-        :param app_id: 24-bit app id
+        :param key_id: One of 0-16 keys stored the card as a byte
 
-        :param key_id: One of 0-16 keys on the card as byte
+        :param private_key: 16 bytes of private key
 
-        :param private_key: 8 or 16 bytes of private key
+        :return: session key, 8 bytes
         """
 
-        raise NotImplementedError("Still needs to be done in a proper manner.")
+        apdu_command = self.wrap_command(0x0a, [key_id])
+        resp = self.communicate(apdu_command, "Authenticating key {:02X}".format(key_id), allow_continue_fallthrough=True)
+
+        # We get 8 bytes challenge
+        random_b_encrypted = list(resp)
+        assert len(random_b_encrypted) == 8
+
+        initial_value = b"\00" * 8
+        k = pyDes.triple_des(bytes(private_key), pyDes.CBC, initial_value, pad=None, padmode=pyDes.PAD_NORMAL)
+
+        decrypted_b = [b for b in (k.decrypt(bytes(random_b_encrypted)))]
+
+        # shift randB one byte left and get randB'
+        shifted_b = decrypted_b[1:8] + [decrypted_b[0]]
+
+        # Generate random_a
+        # NOT A REAL RANDOM NUMBER AND NOT IV XORRED
+        random_a = b"\00" * 8
+
+        decrypted_a = [b for b in k.decrypt(bytes(random_a))]
+
+        xorred = []
+
+        for i in range(0, 8):
+            xorred.append(decrypted_a[i] ^ shifted_b[i])
+
+        decrypted_xorred = [b for b in k.decrypt(bytes(xorred))]
+
+        final_bytes = decrypted_a + decrypted_xorred
+        assert len(final_bytes) == 16
+
+        apdu_command = self.wrap_command(0xaf, final_bytes)
+        resp = self.communicate(apdu_command, "Authenticating continues with key {:02X}".format(key_id))
+
+        assert len(resp) == 8
+
+        self.logger.info("Received session key %s", byte_array_to_human_readable_hex(resp))
+
+        self.session_key = resp
+
+        return resp
+
+        #import pdb ; pdb.set_trace()
+        #raise NotImplementedError("Still needs to be done in a proper manner.")
 
         # from jnius import autoclass
         # from jnius import cast
@@ -662,3 +753,81 @@ class DESFire(object):
 
         duration = time.time() - start_time
         self.logger.debug("Finished writing %d bytes in %d commands and %f seconds", len(data), cycles, duration)
+
+    def format(self):
+        """Format the card.
+
+        .. warn ::
+
+            This function is a stub and not finished.
+
+        .. note ::
+
+            You need to authenticate with the master key first.
+
+        All application are deleted and all files within them. The PICC Master Keyand the PICC Master Key settings keep their currently set values
+        """
+
+        raise NotImplementedError("This has not been tested out yet")
+
+        # Example format trace
+        """
+        23:21 Card Saved Successfully
+        23:21 Data written to Card OK
+        23:21 New Session B9 FE E5 89 CF F7 2F 60 B9 FE E5 89 CF F7 2F 60
+        23:21 Authenticate TDES Key#00: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+        23:21 Aid 000000 selected OK
+        23:21 APP (121314) Keys Saved OK
+        23:21 New Session 74 D0 AD AC 10 AC C3 93 74 D0 AD AC 10 AC C3 93
+        23:21 Authenticate TDES Key#00: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+        23:21 Aid 121314 selected OK
+        23:21 New Session 43 2B EC 76 D0 15 F0 5B 43 2B EC 76 D0 15 F0 5B
+        23:21 Authenticate TDES Key#00: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+        23:21 Aid 121314 selected OK
+        23:21 Create APP 121314 OK
+        23:21 Aid 000000 selected OK
+        23:21 New Session 83 48 66 D0 68 DA 3F 6C 83 48 66 D0 68 DA 3F 6C
+        23:21 Authenticate TDES Key#00: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+        23:21 Aid 000000 selected OK
+        23:21 Format Card Command Status OK
+        23:21 Card Authenticated OK
+        23:21 New Session 55 12 0F E9 51 9C 5E C5 55 12 0F E9 51 9C 5E C5
+        23:21 Authenticate TDES Key#00: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+        23:21 Aid 000000 selected OK
+        23:21 Formatting Card....
+        """
+
+
+        apdu_command = self.wrap_command(0xFC, [])
+        self.communicate(apdu_command, "Formatting card")
+
+    def create_application(self, app_id, key_settings_1, key_settings_2):
+        """Creates a new application.
+
+        .. warn ::
+
+            This function is a stub and not finished.
+
+        https://www.mifare.net/files/advanced_javadoc/com/nxp/nfclib/desfire/DESFire.html#createApplication(byte[],%20byte,%20byte)
+
+        :param app_id: 24-bit application id
+
+        :param key_settings_1: byte
+
+        :param key_settings_2: byte
+        """
+
+        raise NotImplementedError("This has not been tested out yet")
+
+        parameters = [
+            (app_id >> 16) & 0xff,
+            (app_id >> 8) & 0xff,
+            (app_id >> 0) & 0xff,
+            key_settings_1,
+            key_settings_2,
+        ]
+
+        # CREATE_APPLICATION((byte) 0xCA),
+        apdu_command = self.wrap_command(0xCA, parameters)
+        self.communicate(apdu_command, "Creating application {:06X}".format(app_id))
+
