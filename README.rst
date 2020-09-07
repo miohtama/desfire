@@ -28,7 +28,7 @@ Features
 
 * Compatibile with USB-based NFC readers via PCSC interface. PCSC API is available on Linux, OSX and Windows. Linux support includes support for Raspberry Pi.
 
-* Compatibile with Android mobile phones and their built-in NFC readers. This is done using `Kivy <https://kivy.org/>`_ cross application Python framework and native Android APIs via `pyjnius <https://github.com/kivy/pyjnius>`_ Python to Java bridging.
+* Compatible with Android mobile phones and their built-in NFC readers. This is done using `Kivy <https://kivy.org/>`_ cross application Python framework and native Android APIs via `pyjnius <https://github.com/kivy/pyjnius>`_ Python to Java bridging.
 
 * Only some of the commands are implemented in the current alpha quality version, please feel free to add more.
 
